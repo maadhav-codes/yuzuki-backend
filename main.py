@@ -1,8 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, text
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 
 # Database URL for SQLite, using a file named test.db in the current directory
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
@@ -44,28 +43,46 @@ class MessageCreate(BaseModel):
 app = FastAPI()
 
 
+# Dependency function to get a database session for each request
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 # Endpoint to check if the backend is running
 @app.get("/")
 def read_root():
     return {"message": "Backend is running"}
 
 
+# Health check endpoint to verify database connectivity
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database unreachable: {str(e)}")
+
+
 # Endpoint to receive a message and store it in the database
 @app.post("/message/")
-def create_message(message: MessageCreate):
-    # Create a new database session
-    with SessionLocal() as db:
-        # Create a new Message instance with the content from the request
-        db_message = Message(content=message.content)
+def create_message(message: MessageCreate, db: Session = Depends(get_db)):
 
-        # Add the new message to the database session
-        db.add(db_message)
+    # Create a new Message instance with the content from the request
+    db_message = Message(content=message.content)
 
-        # Commit the transaction to save the message to the database
-        db.commit()
+    # Add the new message to the database session
+    db.add(db_message)
 
-        # Refresh the instance to get the generated ID after commit
-        db.refresh(db_message)
+    # Commit the transaction to save the message to the database
+    db.commit()
 
-        # Return the received message content and the generated ID as a response
-        return {"received": message.content, "id": db_message.id}
+    # Refresh the instance to get the generated ID after commit
+    db.refresh(db_message)
+
+    # Return the received message content and the generated ID as a response
+    return {"received": message.content, "id": db_message.id}
