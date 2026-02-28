@@ -1,0 +1,9 @@
+.idea
+.ruff_cache 
+.venv 
+*.log
+*.tmp
+*.egg-info
+dist
+build
+__pycache__
