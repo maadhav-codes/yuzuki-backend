@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db, Base, engine
-from models import Message, User
+from models import ChatSession, Message, User
 
 # Create a FastAPI instance to define the API endpoints
 app = FastAPI(title="Yuzuki API")
@@ -68,6 +68,7 @@ def health_check(db: Session = Depends(get_db)):
 @app.get("/messages/{user_id}", response_model=List[MessageResponse])
 def get_user_messages(
     user_id: int,
+    limit: int = 5,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -76,8 +77,12 @@ def get_user_messages(
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-    # Query the Message table to retrieve all messages that belong to the specified user ID
-    messages = db.query(Message).filter(Message.owner_id == user_id).all()
+    # Validate that the limit parameter is within the acceptable range (1 to 10)
+    if limit < 1 or limit > 10:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 10")
+
+    # Retrieve the most recent messages for the specified user using the helper function, passing in the database session, user ID, and limit
+    messages = get_context_messages(db=db, user_id=user_id, limit=limit)
     return messages
 
 
@@ -87,10 +92,27 @@ def create_chat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Retrieve the most recent chat session for the current user, ordered by creation time in descending order
+    chat_session = (
+        db.query(ChatSession)
+        .filter(ChatSession.owner_id == current_user.id)
+        .order_by(desc(ChatSession.created_at))
+        .first()
+    )
+
+    # If no existing chat session is found for the user, create a new chat session and associate it with the current user
+    if chat_session is None:
+        chat_session = ChatSession(owner_id=current_user.id)
+        db.add(chat_session)
+        db.commit()
+        db.refresh(chat_session)
 
     # Create a new Message instance for the user's message, setting the content, is_user flag to True, and linking it to the current user's ID
     user_message = Message(
-        content=message.content, is_user=True, owner_id=current_user.id
+        content=message.content,
+        is_user=True,
+        owner_id=current_user.id,
+        chat_session_id=chat_session.id,
     )
     # Add the new user message to the database session
     db.add(user_message)
@@ -107,7 +129,10 @@ def create_chat(
 
     # Create a new Message instance for the AI response, setting the content, is_user flag to False, and linking it to the current user's ID
     ai_message = Message(
-        content=ai_response_text, is_user=False, owner_id=current_user.id
+        content=ai_response_text,
+        is_user=False,
+        owner_id=current_user.id,
+        chat_session_id=chat_session.id,
     )
     # Add the new AI message to the database session
     db.add(ai_message)
