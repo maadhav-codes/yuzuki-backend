@@ -1,52 +1,17 @@
 from typing import List
 
-from fastapi import FastAPI, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import text, desc
+from fastapi import FastAPI, Depends, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db, Base, engine
 from models import ChatSession, Message, User
+from schemas import MessageCreate, MessageUpdate, MessageRead
+from crud import message as crud_message
 
-# Create a FastAPI instance to define the API endpoints
+# Create a FastAPI instance
 app = FastAPI(title="Yuzuki API")
-
-
-# Define the base model for incoming message data, which includes the content of the message and whether it was sent by the user
-class MessageBase(BaseModel):
-    content: str
-    is_user: bool
-
-
-# Define the response model for messages, which includes the message ID, content, whether it was sent by the user, and the timestamp
-class MessageResponse(BaseModel):
-    id: int
-    content: str
-    is_user: bool
-    timestamp: str
-
-    # This configuration allows the response model to be created from SQLAlchemy model instances directly
-    class Config:
-        from_attributes = True
-
-
-# Helper function to retrieve the most recent messages for a user, limited to a specified number
-def get_context_messages(db: Session, user_id: int, limit: int = 5):
-    messages = (
-        # Query the Message table in the database
-        db.query(Message)
-        # Filter messages to only include those that belong to the specified user
-        .filter(Message.owner_id == user_id)
-        # Order the messages by timestamp in descending order to get the most recent messages first
-        .order_by(desc(Message.timestamp))
-        # Limit the number of messages returned to the specified limit
-        .limit(limit)
-        # Retrieve all the messages that match the query criteria
-        .all()
-    )
-
-    return messages[::-1]
 
 
 # Endpoint to check if the backend is running
@@ -65,82 +30,124 @@ def health_check(db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail=f"Database unreachable: {str(e)}")
 
 
-@app.get("/messages/{user_id}", response_model=List[MessageResponse])
-def get_user_messages(
-    user_id: int,
-    limit: int = 5,
+# --- Message CRUD Endpoints ---
+
+
+# Endpoint to create a new message in a chat session
+@app.post(
+    "/sessions/{session_id}/messages",
+    response_model=MessageRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_session_message(
+    session_id: int,
+    message_in: MessageCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-
-    # Ensure that users can only access their own messages
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-    # Validate that the limit parameter is within the acceptable range (1 to 10)
-    if limit < 1 or limit > 10:
-        raise HTTPException(status_code=400, detail="limit must be between 1 and 10")
-
-    # Retrieve the most recent messages for the specified user using the helper function, passing in the database session, user ID, and limit
-    messages = get_context_messages(db=db, user_id=user_id, limit=limit)
-    return messages
-
-
-@app.post("/chat", response_model=MessageResponse)
-def create_chat(
-    message: MessageBase,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    # Retrieve the most recent chat session for the current user, ordered by creation time in descending order
-    chat_session = (
+    # Verify session ownership before creating a message
+    session = (
         db.query(ChatSession)
-        .filter(ChatSession.owner_id == current_user.id)
-        .order_by(desc(ChatSession.created_at))
+        .filter(ChatSession.id == session_id, ChatSession.owner_id == current_user.id)
         .first()
     )
 
-    # If no existing chat session is found for the user, create a new chat session and associate it with the current user
-    if chat_session is None:
-        chat_session = ChatSession(owner_id=current_user.id)
-        db.add(chat_session)
-        db.commit()
-        db.refresh(chat_session)
+    # Check if the chat session exists and belongs to the current user
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
 
-    # Create a new Message instance for the user's message, setting the content, is_user flag to True, and linking it to the current user's ID
-    user_message = Message(
-        content=message.content,
-        is_user=True,
-        owner_id=current_user.id,
-        chat_session_id=chat_session.id,
+    return crud_message.create_message(
+        db,
+        user_id=current_user.id,
+        chat_session_id=session_id,
+        content=message_in.content,
+        is_user=message_in.is_user,
     )
-    # Add the new user message to the database session
-    db.add(user_message)
-    # Commit the transaction to save the user message in the database
-    db.commit()
 
-    # Retrieve the most recent messages for the current user to provide context for generating the AI response
-    history = get_context_messages(db=db, user_id=current_user.id, limit=5)
-    # Combine the content of the recent messages into a single string to use as context for generating the AI response
-    context_text = " ".join([msg.content for msg in history])
 
-    # Placeholder for AI response generation logic, currently just echoes the user's message
-    ai_response_text = f"Echo: {message.content}"
-
-    # Create a new Message instance for the AI response, setting the content, is_user flag to False, and linking it to the current user's ID
-    ai_message = Message(
-        content=ai_response_text,
-        is_user=False,
-        owner_id=current_user.id,
-        chat_session_id=chat_session.id,
+# Endpoint to retrieve messages for a specific chat session with pagination
+@app.get("/sessions/{session_id}/messages", response_model=List[MessageRead])
+def read_session_messages(
+    session_id: int,
+    limit: int = 10,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Check if the chat session exists and belongs to the current user
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.id == session_id, ChatSession.owner_id == current_user.id)
+        .first()
     )
-    # Add the new AI message to the database session
-    db.add(ai_message)
-    # Commit the transaction to save the AI message in the database
-    db.commit()
 
-    return ai_message
+    # 404 if session doesn't exist or doesn't belong to user
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    # Return the list of messages for the specified chat session with pagination
+    messages = crud_message.get_messages(
+        db,
+        user_id=current_user.id,
+        chat_session_id=session_id,
+        limit=limit,
+        offset=offset,
+    )
+    return messages
 
 
-# Create the messages table in the database if it doesn't already exist
+# Endpoint to update the content of a specific message
+@app.patch("/messages/{message_id}", response_model=MessageRead)
+def update_message_content(
+    message_id: int,
+    message_in: MessageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Check if the message exists and belongs to the current user
+    existing_msg = db.query(Message).filter(Message.id == message_id).first()
+
+    # 404 if message doesn't exist
+    if not existing_msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    # 403 if user is not the owner of the message
+    if existing_msg.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to edit this message"
+        )
+
+    # Update the message content and return the updated message
+    updated_msg = crud_message.update_message(
+        db, message_id=message_id, user_id=current_user.id, content=message_in.content
+    )
+    return updated_msg
+
+
+# Endpoint to delete a specific message
+@app.delete("/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_message_by_id(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Check if the message exists and belongs to the current user
+    existing_msg = db.query(Message).filter(Message.id == message_id).first()
+
+    # 404 if message doesn't exist
+    if not existing_msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    # 403 if user is not the owner of the message
+    if existing_msg.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to delete this message"
+        )
+
+    # Delete the message and return 204 No Content
+    crud_message.delete_message(db, message_id=message_id, user_id=current_user.id)
+    return None
+
+
+# Create all database tables based on the defined models
 Base.metadata.create_all(bind=engine)
