@@ -1,55 +1,52 @@
+from typing import List
+
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, text
-from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy import text, desc
+from sqlalchemy.orm import Session
 
-# Database URL for SQLite, using a file named test.db in the current directory
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-# Create a SQLAlchemy engine to connect to the SQLite database, with the option to allow multiple threads
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-
-# Create a session factory that will be used to create database sessions
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create a base class for our SQLAlchemy models
-Base = declarative_base()
-
-
-# Define a SQLAlchemy model for the messages table
-class Message(Base):
-    # Table name in the database
-    __tablename__ = "messages"
-
-    # Unique identifier for each message, set as primary key and indexed for faster queries
-    id = Column(Integer, primary_key=True, index=True)
-
-    # Column to store the content of the message
-    content = Column(String)
-
-
-# Create the messages table in the database if it doesn't already exist
-Base.metadata.create_all(bind=engine)
-
-
-# Define a Pydantic model for the message creation request
-class MessageCreate(BaseModel):
-    content: str
-
+from auth import get_current_user
+from database import get_db, Base, engine
+from models import Message, User
 
 # Create a FastAPI instance to define the API endpoints
-app = FastAPI()
+app = FastAPI(title="Yuzuki API")
 
 
-# Dependency function to get a database session for each request
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Define the base model for incoming message data, which includes the content of the message and whether it was sent by the user
+class MessageBase(BaseModel):
+    content: str
+    is_user: bool
+
+
+# Define the response model for messages, which includes the message ID, content, whether it was sent by the user, and the timestamp
+class MessageResponse(BaseModel):
+    id: int
+    content: str
+    is_user: bool
+    timestamp: str
+
+    # This configuration allows the response model to be created from SQLAlchemy model instances directly
+    class Config:
+        from_attributes = True
+
+
+# Helper function to retrieve the most recent messages for a user, limited to a specified number
+def get_context_messages(db: Session, user_id: int, limit: int = 5):
+    messages = (
+        # Query the Message table in the database
+        db.query(Message)
+        # Filter messages to only include those that belong to the specified user
+        .filter(Message.owner_id == user_id)
+        # Order the messages by timestamp in descending order to get the most recent messages first
+        .order_by(desc(Message.timestamp))
+        # Limit the number of messages returned to the specified limit
+        .limit(limit)
+        # Retrieve all the messages that match the query criteria
+        .all()
+    )
+
+    return messages[::-1]
 
 
 # Endpoint to check if the backend is running
@@ -68,21 +65,57 @@ def health_check(db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail=f"Database unreachable: {str(e)}")
 
 
-# Endpoint to receive a message and store it in the database
-@app.post("/message/")
-def create_message(message: MessageCreate, db: Session = Depends(get_db)):
+@app.get("/messages/{user_id}", response_model=List[MessageResponse])
+def get_user_messages(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
 
-    # Create a new Message instance with the content from the request
-    db_message = Message(content=message.content)
+    # Ensure that users can only access their own messages
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
 
-    # Add the new message to the database session
-    db.add(db_message)
+    # Query the Message table to retrieve all messages that belong to the specified user ID
+    messages = db.query(Message).filter(Message.owner_id == user_id).all()
+    return messages
 
-    # Commit the transaction to save the message to the database
+
+@app.post("/chat", response_model=MessageResponse)
+def create_chat(
+    message: MessageBase,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+
+    # Create a new Message instance for the user's message, setting the content, is_user flag to True, and linking it to the current user's ID
+    user_message = Message(
+        content=message.content, is_user=True, owner_id=current_user.id
+    )
+    # Add the new user message to the database session
+    db.add(user_message)
+    # Commit the transaction to save the user message in the database
     db.commit()
 
-    # Refresh the instance to get the generated ID after commit
-    db.refresh(db_message)
+    # Retrieve the most recent messages for the current user to provide context for generating the AI response
+    history = get_context_messages(db=db, user_id=current_user.id, limit=5)
+    # Combine the content of the recent messages into a single string to use as context for generating the AI response
+    context_text = " ".join([msg.content for msg in history])
 
-    # Return the received message content and the generated ID as a response
-    return {"received": message.content, "id": db_message.id}
+    # Placeholder for AI response generation logic, currently just echoes the user's message
+    ai_response_text = f"Echo: {message.content}"
+
+    # Create a new Message instance for the AI response, setting the content, is_user flag to False, and linking it to the current user's ID
+    ai_message = Message(
+        content=ai_response_text, is_user=False, owner_id=current_user.id
+    )
+    # Add the new AI message to the database session
+    db.add(ai_message)
+    # Commit the transaction to save the AI message in the database
+    db.commit()
+
+    return ai_message
+
+
+# Create the messages table in the database if it doesn't already exist
+Base.metadata.create_all(bind=engine)
