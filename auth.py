@@ -49,7 +49,7 @@ def get_jwt_token() -> Dict[str, Any]:
 
     try:
         # Fetch the JWKS keys from the specified URL
-        response = requests.get(JWKS_URL)
+        response = requests.get(JWKS_URL, timeout=10)
         # Check if the request was successful, raise an error if not
         response.raise_for_status()
         # Extract the 'keys' from the JSON response, defaulting to an empty list if not present
@@ -103,11 +103,20 @@ def get_current_user(
         # Construct the expected issuer URL based on the Supabase URL
         issuer = f"{SUPABASE_URL}/auth/v1"
 
+        # Use the algorithm published by Supabase's JWK when present (e.g., ES256).
+        token_alg = unverified_header.get("alg")
+        key_alg = signing_key.get("alg")
+        algorithm = key_alg or token_alg
+        if not algorithm:
+            raise HTTPException(
+                status_code=401, detail="Invalid token header: missing alg"
+            )
+
         # Decode the JWT token using the signing key, specifying the expected algorithm, audience, and issuer for validation
         payload = jwt.decode(
             token,
             signing_key,
-            algorithms=["RS256"],
+            algorithms=[algorithm],
             audience="authenticated",
             issuer=issuer,
         )
@@ -132,6 +141,10 @@ def get_current_user(
             db.refresh(user)
 
         return user
+
+    # Re-raise intentionally raised HTTP errors (e.g., invalid token header) unchanged.
+    except HTTPException:
+        raise
 
     # Catch any JWT-related errors that occur during token decoding and raise an HTTP 401 error with a message indicating that the credentials could not be validated, including the specific error message for debugging purposes
     except JWTError as e:
