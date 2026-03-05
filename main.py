@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db, Base, engine
 from models import ChatSession, Message, User
-from schemas import MessageCreate, MessageUpdate, MessageRead
+from schemas import ChatSessionRead, MessageCreate, MessageUpdate, MessageRead
 from crud import message as crud_message
 
 # Create a FastAPI instance
@@ -31,6 +31,39 @@ def health_check(db: Session = Depends(get_db)):
 
 
 # --- Message CRUD Endpoints ---
+
+@app.post("/sessions", response_model=ChatSessionRead, status_code=status.HTTP_201_CREATED)
+def create_chat_session(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = ChatSession(owner_id=current_user.id)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@app.get("/sessions/current", response_model=ChatSessionRead)
+def get_current_chat_session(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Use most recently created session for this user; create one if none exists.
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.owner_id == current_user.id)
+        .order_by(ChatSession.created_at.desc(), ChatSession.id.desc())
+        .first()
+    )
+    if session:
+        return session
+
+    session = ChatSession(owner_id=current_user.id)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
 
 
 # Endpoint to create a new message in a chat session

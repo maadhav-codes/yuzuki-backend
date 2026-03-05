@@ -2,6 +2,15 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class ChatSessionRead(BaseModel):
+    id: int
+    owner_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Schema for creating a new message
 class MessageCreate(BaseModel):
     content: str
