@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from typing import Dict, Any
 
 import requests
@@ -27,6 +28,7 @@ if not JWKS_URL:
 
 # Define the HTTPBearer security scheme for FastAPI
 security = HTTPBearer()
+logger = logging.getLogger(__name__)
 
 # Cache for JWKS keys, mapping 'kid' to the key data
 JWKS_CACHE: Dict[str, Any] = {}
@@ -60,9 +62,10 @@ def get_jwt_token() -> Dict[str, Any]:
         # Update the last fetch time to the current time
         JWKS_LAST_FETCH = current_time
         return JWKS_CACHE
-    except Exception as ex:
+    except Exception:
+        logger.exception("Failed to fetch Supabase JWKS")
         raise HTTPException(
-            status_code=500, detail=f"Could not fetch JWT token: {str(ex)}"
+            status_code=500, detail="Unable to validate authentication token"
         )
 
 
@@ -147,14 +150,13 @@ def get_current_user(
         raise
 
     # Catch any JWT-related errors that occur during token decoding and raise an HTTP 401 error with a message indicating that the credentials could not be validated, including the specific error message for debugging purposes
-    except JWTError as e:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials: {str(e)}",
+            detail="Could not validate credentials",
         )
 
     # Catch any other exceptions that may occur during the authentication process and raise an HTTP 500 error with a message indicating that there was an internal authentication error, including the specific error message for debugging purposes
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Internal authentication error: {str(e)}"
-        )
+    except Exception:
+        logger.exception("Unexpected error during authentication")
+        raise HTTPException(status_code=500, detail="Internal authentication error")

@@ -1,6 +1,7 @@
 from typing import List
 
-from fastapi import FastAPI, Depends, HTTPException, status
+
+from fastapi import FastAPI, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,7 @@ from crud import message as crud_message
 
 # Create a FastAPI instance
 app = FastAPI(title="Yuzuki API")
+MESSAGE_CONTEXT_LIMIT = 10
 
 
 # Endpoint to check if the backend is running
@@ -32,7 +34,10 @@ def health_check(db: Session = Depends(get_db)):
 
 # --- Message CRUD Endpoints ---
 
-@app.post("/sessions", response_model=ChatSessionRead, status_code=status.HTTP_201_CREATED)
+
+@app.post(
+    "/sessions", response_model=ChatSessionRead, status_code=status.HTTP_201_CREATED
+)
 def create_chat_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -89,21 +94,28 @@ def create_session_message(
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
-    return crud_message.create_message(
+    message = crud_message.create_message(
         db,
         user_id=current_user.id,
         chat_session_id=session_id,
         content=message_in.content,
         is_user=message_in.is_user,
     )
+    crud_message.enforce_message_retention(
+        db,
+        user_id=current_user.id,
+        chat_session_id=session_id,
+        limit=MESSAGE_CONTEXT_LIMIT,
+    )
+    return message
 
 
 # Endpoint to retrieve messages for a specific chat session with pagination
 @app.get("/sessions/{session_id}/messages", response_model=List[MessageRead])
 def read_session_messages(
     session_id: int,
-    limit: int = 10,
-    offset: int = 0,
+    limit: int = Query(default=MESSAGE_CONTEXT_LIMIT, ge=1, le=MESSAGE_CONTEXT_LIMIT),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
