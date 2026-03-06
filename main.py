@@ -1,19 +1,60 @@
-from typing import List
+import os
+from typing import AsyncIterator, List
 
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from database import get_db, Base, engine
 from models import ChatSession, Message, User
-from schemas import ChatSessionRead, MessageCreate, MessageUpdate, MessageRead
+from ollama_service import OllamaService, OllamaServiceError
+from schemas import (
+    ChatRequest,
+    ChatSessionRead,
+    MessageCreate,
+    MessageUpdate,
+    MessageRead,
+)
 from crud import message as crud_message
 
-# Create a FastAPI instance
-app = FastAPI(title="Yuzuki API")
-MESSAGE_CONTEXT_LIMIT = 10
+app = FastAPI(title="Yuzuki API")  # Set the title of the API for documentation purposes
+
+MESSAGE_CONTEXT_LIMIT = int(
+    os.getenv("MESSAGE_CONTEXT_LIMIT", "10")
+)  # Maximum number of recent messages to include as context for the Ollama model, configurable via environment variable with a default of 10
+
+MESSAGE_RETENTION_LIMIT = int(
+    os.getenv("MESSAGE_RETENTION_LIMIT", "200")
+)  # Maximum number of messages to retain in the database for a chat session, configurable via environment variable with a default of 200; older messages will be deleted to enforce this limit
+
+ollama_service = (
+    OllamaService()
+)  # Initialize the OllamaService to interact with the Ollama API for generating chat responses
+
+
+# Helper function to get the latest chat session for a user or create a new one if none exists
+def get_or_create_latest_session(
+    db: Session, user_id: int
+) -> type[ChatSession] | ChatSession:
+    # Try to find the most recent chat session for the user, ordered by creation time and ID
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.owner_id == user_id)
+        .order_by(ChatSession.created_at.desc(), ChatSession.id.desc())
+        .first()
+    )
+    # If a session exists, return it; otherwise, create a new session for the user
+    if session:
+        return session
+
+    session = ChatSession(owner_id=user_id)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
 
 
 # Endpoint to check if the backend is running
@@ -32,9 +73,7 @@ def health_check(db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail=f"Database unreachable: {str(e)}")
 
 
-# --- Message CRUD Endpoints ---
-
-
+# Endpoint to create a new chat session for the authenticated user
 @app.post(
     "/sessions", response_model=ChatSessionRead, status_code=status.HTTP_201_CREATED
 )
@@ -49,26 +88,105 @@ def create_chat_session(
     return session
 
 
+# Endpoint to retrieve the most recent chat session for the authenticated user, or create one if it doesn't exist
 @app.get("/sessions/current", response_model=ChatSessionRead)
 def get_current_chat_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Use most recently created session for this user; create one if none exists.
-    session = (
-        db.query(ChatSession)
-        .filter(ChatSession.owner_id == current_user.id)
-        .order_by(ChatSession.created_at.desc(), ChatSession.id.desc())
-        .first()
-    )
-    if session:
-        return session
+    return get_or_create_latest_session(db, user_id=current_user.id)
 
-    session = ChatSession(owner_id=current_user.id)
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return session
+
+# Endpoint to handle chat interactions with the Ollama API, including streaming responses and managing chat history
+@app.post("/chat")
+async def chat_with_ollama(
+    chat_in: ChatRequest,
+    session_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # If a session_id is provided, verify that it exists and belongs to the current user; otherwise, get or create the latest session for the user
+    if session_id is not None:
+        session = (
+            db.query(ChatSession)
+            .filter(
+                ChatSession.id == session_id, ChatSession.owner_id == current_user.id
+            )
+            .first()
+        )
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+    else:
+        session = get_or_create_latest_session(db, user_id=current_user.id)
+
+    # Retrieve the recent chat history for the session to provide context for the Ollama model, limited by MESSAGE_CONTEXT_LIMIT
+    context_messages = crud_message.get_context_messages(
+        db,
+        user_id=current_user.id,
+        chat_session_id=session.id,
+        limit=MESSAGE_CONTEXT_LIMIT,
+    )
+
+    # Format the chat history into a string that can be included in the prompt for the Ollama model
+    history = ollama_service.format_history(context_messages)
+
+    # Create a new message in the database for the user's input before streaming the response from the Ollama model
+    crud_message.create_message(
+        db,
+        user_id=current_user.id,
+        chat_session_id=session.id,
+        content=chat_in.message,
+        is_user=True,
+    )
+
+    # Stream the response from the Ollama model based on the provided chat history and user message, and handle any errors that may occur during the streaming process
+    model_stream = ollama_service.stream_chat(history=history, message=chat_in.message)
+    assistant_chunks: list[str] = []
+
+    # Attempt to get the first chunk of the response to handle any immediate errors from the Ollama API before starting the streaming response; if an error occurs, enforce message retention limits and return a 503 error
+    try:
+        first_chunk = await anext(model_stream)
+    except StopAsyncIteration:
+        first_chunk = ""
+    except OllamaServiceError as exc:
+        crud_message.enforce_message_retention(
+            db,
+            user_id=current_user.id,
+            chat_session_id=session.id,
+            limit=MESSAGE_RETENTION_LIMIT,
+        )
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Define an asynchronous generator function to yield chunks of the assistant's response as they are received from the Ollama API, while also accumulating the full response text to save in the database once streaming is complete
+    async def response_stream() -> AsyncIterator[str]:
+        if first_chunk:
+            assistant_chunks.append(first_chunk)
+            yield first_chunk
+
+        try:
+            async for chunk in model_stream:
+                assistant_chunks.append(chunk)
+                yield chunk
+        except OllamaServiceError:
+            return
+        finally:
+            assistant_text = "".join(assistant_chunks).strip()
+            if assistant_text:
+                crud_message.create_message(
+                    db,
+                    user_id=current_user.id,
+                    chat_session_id=session.id,
+                    content=assistant_text,
+                    is_user=False,
+                )
+            crud_message.enforce_message_retention(
+                db,
+                user_id=current_user.id,
+                chat_session_id=session.id,
+                limit=MESSAGE_RETENTION_LIMIT,
+            )
+
+    return StreamingResponse(response_stream(), media_type="text/plain")
 
 
 # Endpoint to create a new message in a chat session
@@ -105,7 +223,7 @@ def create_session_message(
         db,
         user_id=current_user.id,
         chat_session_id=session_id,
-        limit=MESSAGE_CONTEXT_LIMIT,
+        limit=MESSAGE_RETENTION_LIMIT,
     )
     return message
 

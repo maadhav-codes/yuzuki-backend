@@ -8,7 +8,9 @@ click==8.3.1
 ecdsa==0.19.1
 fastapi==0.134.0
 h11==0.16.0
+httpcore==1.0.9
 httptools==0.7.1
+httpx==0.28.1
 idna==3.11
 mypy_extensions==1.1.0
 packaging==26.0
