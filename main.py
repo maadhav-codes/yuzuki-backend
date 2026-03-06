@@ -127,9 +127,6 @@ async def chat_with_ollama(
         limit=MESSAGE_CONTEXT_LIMIT,
     )
 
-    # Format the chat history into a string that can be included in the prompt for the Ollama model
-    history = ollama_service.format_history(context_messages)
-
     # Create a new message in the database for the user's input before streaming the response from the Ollama model
     crud_message.create_message(
         db,
@@ -140,7 +137,9 @@ async def chat_with_ollama(
     )
 
     # Stream the response from the Ollama model based on the provided chat history and user message, and handle any errors that may occur during the streaming process
-    model_stream = ollama_service.stream_chat(history=history, message=chat_in.message)
+    model_stream = ollama_service.stream_chat(
+        history=context_messages, message=chat_in.message
+    )
     assistant_chunks: list[str] = []
 
     # Attempt to get the first chunk of the response to handle any immediate errors from the Ollama API before starting the streaming response; if an error occurs, enforce message retention limits and return a 503 error
