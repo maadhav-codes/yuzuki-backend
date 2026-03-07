@@ -12,27 +12,24 @@ YUZUKI_SYSTEM_PROMPT = os.getenv(
 )
 
 
-# Custom exception for Ollama service errors
 class OllamaServiceError(Exception):
     pass
 
 
-# Service class to interact with the Ollama API for generating chat responses
 class OllamaService:
     def __init__(
         self,
         base_url: str = DEFAULT_OLLAMA_BASE_URL,
         model: str = DEFAULT_OLLAMA_MODEL,
     ) -> None:
-        self.base_url = base_url.rstrip("/")  # Ensure no trailing slash
+        self.base_url = base_url.rstrip("/")
         self.model = model
 
-    # Build the chat messages in the format expected by the Ollama API, including the system prompt and user/assistant messages from the history
     @staticmethod
     def build_chat_messages(
         history: Iterable[object], user_message: str
     ) -> list[dict[str, str]]:
-        # Start with the system prompt as the first message, then append messages from the history with appropriate roles (user or assistant), and finally add the current user message at the end
+
         chat_messages: list[dict[str, str]] = [
             {"role": "system", "content": YUZUKI_SYSTEM_PROMPT}
         ]
@@ -45,19 +42,16 @@ class OllamaService:
         chat_messages.append({"role": "user", "content": user_message})
         return chat_messages
 
-    # Stream chat responses from the Ollama API by sending a POST request with the chat messages and yielding each chunk of text as it arrives, handling errors appropriately
     async def stream_chat(
         self, *, history: Iterable[object], message: str
     ) -> AsyncIterator[str]:
         payload = {
             "model": self.model,
             "messages": self.build_chat_messages(history=history, user_message=message),
-            "stream": True,  # Enable streaming responses from the API
+            "stream": True,
         }
         url = f"{self.base_url}/api/chat"
-        timeout = httpx.Timeout(
-            connect=10.0, write=30.0, read=None, pool=30.0
-        )  # Set a long read timeout for streaming responses
+        timeout = httpx.Timeout(connect=10.0, write=30.0, read=None, pool=30.0)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
