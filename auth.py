@@ -67,8 +67,10 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
+    return get_user_from_token(credentials.credentials, db)
 
-    token = credentials.credentials
+
+def get_user_from_token(token: str, db: Session) -> User:
 
     try:
         unverified_header = jwt.get_unverified_header(token)

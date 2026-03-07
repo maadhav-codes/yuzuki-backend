@@ -56,6 +56,18 @@ def get_context_messages(
     return messages[::-1]
 
 
+def get_all_messages(
+    db: Session, *, user_id: int, chat_session_id: int
+) -> list[type[Message]]:
+
+    return (
+        db.query(Message)
+        .filter(Message.owner_id == user_id, Message.chat_session_id == chat_session_id)
+        .order_by(Message.timestamp.asc(), Message.id.asc())
+        .all()
+    )
+
+
 def update_message(
     db: Session, *, message_id: int, user_id: int, content: str
 ) -> type[Message] | None:
