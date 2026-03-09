@@ -3,6 +3,7 @@ import time
 import logging
 from collections import defaultdict, deque
 from typing import AsyncIterator, List
+import asyncio
 
 from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, status
 from fastapi.websockets import WebSocketDisconnect
@@ -239,6 +240,7 @@ async def websocket_chat(
     user_id: int | None = None
     session: ChatSession | None = None
     received_count = 0
+    current_stream_task: asyncio.Task | None = None
 
     try:
         bearer_header = websocket.headers.get("authorization", "")
@@ -275,6 +277,93 @@ async def websocket_chat(
             conn_key, {"type": "connected", "session_id": session.id}
         )
 
+        # Inner streaming task (can be cancelled)
+        async def process_stream(user_msg_id: int, history: list, message_text: str):
+            assistant_chunks: list[str] = []
+            try:
+                async for chunk in ollama_service.stream_chat(
+                    history=history, message=message_text
+                ):
+                    assistant_chunks.append(chunk)
+                    await connection_manager.send_json(
+                        conn_key,
+                        {
+                            "type": "chunk",
+                            "content": chunk,
+                            "session_id": session.id,
+                            "user_message_id": user_msg_id,
+                        },
+                    )
+            except asyncio.CancelledError:
+                partial_text = "".join(assistant_chunks).strip()
+                if partial_text:
+                    crud_message.create_message(
+                        db,
+                        user_id=current_user.id,
+                        chat_session_id=session.id,
+                        content=partial_text,
+                        is_user=False,
+                    )
+                crud_message.enforce_message_retention(
+                    db,
+                    user_id=current_user.id,
+                    chat_session_id=session.id,
+                    limit=MESSAGE_RETENTION_LIMIT,
+                )
+                await connection_manager.send_json(
+                    conn_key, {"type": "cancelled", "session_id": session.id}
+                )
+                raise
+            except OllamaServiceError as exc:
+                partial_text = "".join(assistant_chunks).strip()
+                if partial_text:
+                    crud_message.create_message(
+                        db,
+                        user_id=current_user.id,
+                        chat_session_id=session.id,
+                        content=partial_text,
+                        is_user=False,
+                    )
+                crud_message.enforce_message_retention(
+                    db,
+                    user_id=current_user.id,
+                    chat_session_id=session.id,
+                    limit=MESSAGE_RETENTION_LIMIT,
+                )
+                await connection_manager.send_json(
+                    conn_key,
+                    {"type": "error", "error": str(exc), "session_id": session.id},
+                )
+                return
+
+            assistant_text = "".join(assistant_chunks).strip()
+            assistant_msg_id: int | None = None
+            if assistant_text:
+                assistant_msg = crud_message.create_message(
+                    db,
+                    user_id=current_user.id,
+                    chat_session_id=session.id,
+                    content=assistant_text,
+                    is_user=False,
+                )
+                assistant_msg_id = assistant_msg.id
+
+            crud_message.enforce_message_retention(
+                db,
+                user_id=current_user.id,
+                chat_session_id=session.id,
+                limit=MESSAGE_RETENTION_LIMIT,
+            )
+
+            await connection_manager.send_json(
+                conn_key,
+                {
+                    "type": "done",
+                    "session_id": session.id,
+                    "message_id": assistant_msg_id or 0,
+                },
+            )
+
         while True:
             data = await websocket.receive_json()
             msg_type = str(data.get("type", "message")).strip().lower()
@@ -283,6 +372,11 @@ async def websocket_chat(
                 await connection_manager.send_json(
                     conn_key, {"type": "pong", "timestamp": int(time.time())}
                 )
+                continue
+
+            if msg_type == "cancel":
+                if current_stream_task and not current_stream_task.done():
+                    current_stream_task.cancel()
                 continue
 
             if msg_type != "message":
@@ -313,76 +407,18 @@ async def websocket_chat(
             )
             received_count += 1
 
-            history = crud_message.get_all_messages(
+            history = crud_message.get_context_messages(
                 db,
                 user_id=current_user.id,
                 chat_session_id=session.id,
+                limit=MESSAGE_CONTEXT_LIMIT,
             )
 
-            assistant_chunks: list[str] = []
-            try:
-                async for chunk in ollama_service.stream_chat(
-                    history=history,
-                    message=message_text,
-                ):
-                    assistant_chunks.append(chunk)
-                    await connection_manager.send_json(
-                        conn_key,
-                        {
-                            "type": "chunk",
-                            "content": chunk,
-                            "session_id": session.id,
-                            "user_message_id": user_msg.id,
-                        },
-                    )
-            except OllamaServiceError as exc:
-                partial_text = "".join(assistant_chunks).strip()
-                if partial_text:
-                    crud_message.create_message(
-                        db,
-                        user_id=current_user.id,
-                        chat_session_id=session.id,
-                        content=partial_text,
-                        is_user=False,
-                    )
-                crud_message.enforce_message_retention(
-                    db,
-                    user_id=current_user.id,
-                    chat_session_id=session.id,
-                    limit=MESSAGE_RETENTION_LIMIT,
-                )
-                await connection_manager.send_json(
-                    conn_key,
-                    {"type": "error", "error": str(exc), "session_id": session.id},
-                )
-                continue
+            if current_stream_task and not current_stream_task.done():
+                current_stream_task.cancel()
 
-            assistant_text = "".join(assistant_chunks).strip()
-            assistant_msg_id: int | None = None
-            if assistant_text:
-                assistant_msg = crud_message.create_message(
-                    db,
-                    user_id=current_user.id,
-                    chat_session_id=session.id,
-                    content=assistant_text,
-                    is_user=False,
-                )
-                assistant_msg_id = assistant_msg.id
-
-            crud_message.enforce_message_retention(
-                db,
-                user_id=current_user.id,
-                chat_session_id=session.id,
-                limit=MESSAGE_RETENTION_LIMIT,
-            )
-
-            await connection_manager.send_json(
-                conn_key,
-                {
-                    "type": "done",
-                    "session_id": session.id,
-                    "message_id": assistant_msg_id or 0,
-                },
+            current_stream_task = asyncio.create_task(
+                process_stream(user_msg.id, history, message_text)
             )
 
     except WebSocketDisconnect:
@@ -411,6 +447,8 @@ async def websocket_chat(
         except Exception:
             pass
     finally:
+        if current_stream_task and not current_stream_task.done():
+            current_stream_task.cancel()
         if conn_key:
             connection_manager.disconnect(conn_key, websocket)
         db.close()
