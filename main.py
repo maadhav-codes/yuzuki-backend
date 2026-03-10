@@ -21,6 +21,9 @@ from schemas import (
     MessageCreate,
     MessageUpdate,
     MessageRead,
+    VoiceTTSResponse,
+    VoiceTTSRequest,
+    VoiceConfigResponse,
 )
 from crud import message as crud_message
 
@@ -562,6 +565,22 @@ def delete_message_by_id(
 
     crud_message.delete_message(db, message_id=message_id, user_id=current_user.id)
     return None
+
+
+@app.post("/voice/tts", response_model=VoiceTTSResponse)
+async def text_to_speech(tts: VoiceTTSRequest):
+    # TTS Hook – MVP uses 100% client-side SpeechSynthesis.
+    # Post-MVP: plug in any TTS service here and return real S3/audio URL.
+    return VoiceTTSResponse(
+        success=True,
+        audioUrl=None,
+        note="Client-side TTS is currently used, so no audio URL is provided",
+    )
+
+
+@app.get("/voice/config", response_model=VoiceConfigResponse)
+async def voice_config():
+    return VoiceConfigResponse(supportedLanguages=["en-US"], defaultVoice="default")
 
 
 Base.metadata.create_all(bind=engine)

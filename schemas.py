@@ -1,4 +1,6 @@
 from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -42,3 +44,19 @@ class ChatRequest(BaseModel):
         if not cleaned:
             raise ValueError("message cannot be blank")
         return cleaned
+
+
+class VoiceTTSRequest(BaseModel):
+    text: str
+    voiceId: Optional[str] = None
+
+
+class VoiceTTSResponse(BaseModel):
+    success: bool
+    audioUrl: Optional[str] = None
+    note: str
+
+
+class VoiceConfigResponse(BaseModel):
+    supportedLanguages: list[str]
+    defaultVoice: str
