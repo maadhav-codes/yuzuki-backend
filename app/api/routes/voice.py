@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from schemas import VoiceConfigResponse, VoiceTTSRequest, VoiceTTSResponse
+from app.schemas.schemas import VoiceConfigResponse, VoiceTTSRequest, VoiceTTSResponse
 
 router = APIRouter(tags=["voice"])
 

@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.common import get_or_create_latest_session
-from auth import get_current_user
-from database import get_db
-from models import ChatSession, User
-from schemas import ChatSessionRead
+from app.core.auth import get_current_user
+from app.db.database import get_db
+from app.models.models import ChatSession, User
+from app.schemas.schemas import ChatSessionRead
 
 router = APIRouter(tags=["sessions"])
 

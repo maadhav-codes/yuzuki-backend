@@ -13,11 +13,11 @@ from app.api.common import (
     ollama_service,
     rate_limiter,
 )
-from auth import get_user_from_token
-from crud import message as crud_message
-from database import get_db
-from models import ChatSession
-from ollama_service import OllamaServiceError
+from app.core.auth import get_user_from_token
+from app.crud import message as crud_message
+from app.db.database import get_db
+from app.models.models import ChatSession
+from app.services.ollama_service import OllamaServiceError
 
 router = APIRouter(tags=["websocket"])
 

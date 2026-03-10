@@ -10,12 +10,12 @@ from app.api.common import (
     get_or_create_latest_session,
     ollama_service,
 )
-from auth import get_current_user
-from crud import message as crud_message
-from database import get_db
-from models import ChatSession, User
-from ollama_service import OllamaServiceError
-from schemas import ChatRequest
+from app.core.auth import get_current_user
+from app.crud import message as crud_message
+from app.db.database import get_db
+from app.models.models import ChatSession, User
+from app.services.ollama_service import OllamaServiceError
+from app.schemas.schemas import ChatRequest
 
 router = APIRouter(tags=["chat"])
 

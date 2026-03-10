@@ -7,8 +7,8 @@ from collections import defaultdict, deque
 from fastapi import WebSocket
 from sqlalchemy.orm import Session
 
-from models import ChatSession
-from ollama_service import OllamaService
+from app.models.models import ChatSession
+from app.services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 

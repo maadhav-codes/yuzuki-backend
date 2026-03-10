@@ -6,7 +6,7 @@ from app.api.routes.root import router as root_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.voice import router as voice_router
 from app.api.routes.websocket import router as websocket_router
-from database import Base, engine
+from app.db.database import Base, engine
 
 app = FastAPI(title="Yuzuki API")
 

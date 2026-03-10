@@ -10,8 +10,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
-from database import get_db
-from models import User
+from app.db.database import get_db
+from app.models.models import User
 
 load_dotenv()
 

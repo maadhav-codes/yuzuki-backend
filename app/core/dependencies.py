@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 
-from auth import get_current_user
+from app.core.auth import get_current_user
 
 
 async def require_auth(user=Depends(get_current_user)):

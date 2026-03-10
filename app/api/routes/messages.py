@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.common import MESSAGE_CONTEXT_LIMIT, MESSAGE_RETENTION_LIMIT
-from auth import get_current_user
-from crud import message as crud_message
-from database import get_db
-from models import ChatSession, Message, User
-from schemas import MessageCreate, MessageRead, MessageUpdate
+from app.core.auth import get_current_user
+from app.crud import message as crud_message
+from app.db.database import get_db
+from app.models.models import ChatSession, Message, User
+from app.schemas.schemas import MessageCreate, MessageRead, MessageUpdate
 
 router = APIRouter(tags=["messages"])
 

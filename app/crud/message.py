@@ -1,6 +1,6 @@
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
-from models import Message
+from app.models.models import Message
 
 
 def create_message(
