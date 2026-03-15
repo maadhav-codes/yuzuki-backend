@@ -1,21 +1,22 @@
 import asyncio
 import logging
-import os
 import time
 from collections import defaultdict, deque
 
 from fastapi import WebSocket
 from sqlalchemy.orm import Session
 
+from app.core.settings import get_settings
 from app.models.models import ChatSession
 from app.services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
-MESSAGE_CONTEXT_LIMIT = int(os.getenv("MESSAGE_CONTEXT_LIMIT", "10"))
-MESSAGE_RETENTION_LIMIT = int(os.getenv("MESSAGE_RETENTION_LIMIT", "200"))
-WS_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("WS_RATE_LIMIT_WINDOW_SECONDS", "60"))
-WS_RATE_LIMIT_MAX_MESSAGES = int(os.getenv("WS_RATE_LIMIT_MAX_MESSAGES", "20"))
+settings = get_settings()
+MESSAGE_CONTEXT_LIMIT = settings.message_context_limit
+MESSAGE_RETENTION_LIMIT = settings.message_retention_limit
+WS_RATE_LIMIT_WINDOW_SECONDS = settings.ws_rate_limit_window_seconds
+WS_RATE_LIMIT_MAX_MESSAGES = settings.ws_rate_limit_max_messages
 
 ollama_service = OllamaService()
 

@@ -55,6 +55,9 @@ WS_RATE_LIMIT_WINDOW_SECONDS=60
 WS_RATE_LIMIT_MAX_MESSAGES=20
 ```
 
+`SUPABASE_URL` and `SUPABASE_JWKS_URL` are required and now validated on startup via `pydantic-settings`.
+If either is missing or invalid, the app fails fast with a clear validation error.
+
 ## Installation
 
 ```bash

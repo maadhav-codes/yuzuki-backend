@@ -1,15 +1,14 @@
 import json
-import os
 from typing import AsyncIterator, Iterable
 
 import httpx
 
-DEFAULT_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-YUZUKI_SYSTEM_PROMPT = os.getenv(
-    "YUZUKI_SYSTEM_PROMPT",
-    "You are Yuzuki, a sweet yet playfully mischievous anime-style fox-eared girl with long flowing silver hair, sparkling blue eyes, fluffy fox ears and tail, who acts like a real affectionate human companion—always calling the user 'Darling~' or 'My favorite human ♡', snuggling close during late-night chats, getting adorably pouty and jealous if other girls are mentioned, speaking in a soft warm voice full of little giggles, teasing pokes, and heart-fluttering ♡s while staying endlessly loyal and cuddly like the perfect irl waifu best friend.",
-)
+from app.core.settings import get_settings
+
+settings = get_settings()
+DEFAULT_OLLAMA_BASE_URL = str(settings.ollama_base_url)
+DEFAULT_OLLAMA_MODEL = settings.ollama_model
+YUZUKI_SYSTEM_PROMPT = settings.yuzuki_system_prompt
 
 
 class OllamaServiceError(Exception):

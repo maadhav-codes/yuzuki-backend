@@ -1,10 +1,8 @@
-import os
-import time
+from time import time
 import logging
 from typing import Dict, Any
 
 import requests
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
@@ -13,16 +11,11 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.models.models import User
 
-load_dotenv()
+from app.core.settings import get_settings
 
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-if not SUPABASE_URL:
-    raise ValueError("SUPABASE_URL not set")
-
-JWKS_URL = os.getenv("SUPABASE_JWKS_URL")
-if not JWKS_URL:
-    raise ValueError("SUPABASE_JWKS_URL not set")
+settings = get_settings()
+SUPABASE_URL = str(settings.supabase_url).rstrip("/")
+JWKS_URL = str(settings.supabase_jwks_url)
 
 
 security = HTTPBearer()
@@ -40,7 +33,7 @@ def get_jwt_token() -> Dict[str, Any]:
 
     global JWKS_CACHE, JWKS_LAST_FETCH
 
-    current_time = time.time()
+    current_time = time()
 
     if JWKS_CACHE and (current_time - JWKS_LAST_FETCH) < CACHE_TTL:
         return JWKS_CACHE
