@@ -6,12 +6,15 @@ from app.api.routes.root import router as root_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.voice import router as voice_router
 from app.api.routes.websocket import router as websocket_router
+from app.core.logging import RequestLoggingMiddleware, configure_logging
 from app.core.settings import get_settings
 from app.db.database import Base, engine
 
 _ = get_settings()
+configure_logging()
 
 app = FastAPI(title="Yuzuki API")
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(root_router)
 app.include_router(sessions_router)
