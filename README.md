@@ -54,6 +54,10 @@ MESSAGE_CONTEXT_LIMIT=10
 MESSAGE_RETENTION_LIMIT=200
 WS_RATE_LIMIT_WINDOW_SECONDS=60
 WS_RATE_LIMIT_MAX_MESSAGES=20
+HTTP_POST_RATE_LIMIT_WINDOW_SECONDS=60
+HTTP_POST_RATE_LIMIT_MAX_REQUESTS=30
+SECRETS_MAX_AGE_DAYS=90
+SECRETS_LAST_ROTATED_AT=2026-03-01
 ```
 
 `SUPABASE_URL` and `SUPABASE_JWKS_URL` are required and now validated on startup via `pydantic-settings`.
@@ -109,3 +113,5 @@ WebSocket auth supports:
 - Default is SQLite (`sqlite:///./yuzuki-ai.db`), but PostgreSQL can be used by setting `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname`.
 - Tables are auto-created on app startup.
 - LLM integration is isolated in `app/services/ollama_service.py` for easier mocking/testing.
+- POST endpoints are rate-limited by a middleware bucket keyed by JWT subject (fallback: client IP).
+- Request text fields are sanitized and validated with Pydantic validators before DB writes.

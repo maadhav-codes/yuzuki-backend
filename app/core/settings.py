@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     ws_rate_limit_max_messages: int = Field(
         default=20, ge=1, alias="WS_RATE_LIMIT_MAX_MESSAGES"
     )
+    http_post_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, alias="HTTP_POST_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    http_post_rate_limit_max_requests: int = Field(
+        default=30, ge=1, alias="HTTP_POST_RATE_LIMIT_MAX_REQUESTS"
+    )
+    secrets_max_age_days: int = Field(default=90, ge=1, alias="SECRETS_MAX_AGE_DAYS")
+    secrets_last_rotated_at: str | None = Field(
+        default=None, alias="SECRETS_LAST_ROTATED_AT"
+    )
     database_url: str = Field(default="sqlite:///./yuzuki-ai.db", alias="DATABASE_URL")
 
 
