@@ -47,6 +47,7 @@ Create `.env` in project root:
 ```env
 SUPABASE_URL=...
 SUPABASE_JWKS_URL=...
+DATABASE_URL=sqlite:///./yuzuki-ai.db
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2:3b
 MESSAGE_CONTEXT_LIMIT=10
@@ -104,6 +105,7 @@ WebSocket auth supports:
 
 ## Notes
 
-- SQLite is used by default (`yuzuki-ai.db`).
+- Database is configured through `DATABASE_URL`.
+- Default is SQLite (`sqlite:///./yuzuki-ai.db`), but PostgreSQL can be used by setting `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname`.
 - Tables are auto-created on app startup.
 - LLM integration is isolated in `app/services/ollama_service.py` for easier mocking/testing.

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     ws_rate_limit_max_messages: int = Field(
         default=20, ge=1, alias="WS_RATE_LIMIT_MAX_MESSAGES"
     )
+    database_url: str = Field(default="sqlite:///./yuzuki-ai.db", alias="DATABASE_URL")
 
 
 @lru_cache(maxsize=1)
