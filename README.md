@@ -76,18 +76,18 @@ Server starts at `http://127.0.0.1:8000`.
 
 ## API Overview
 
-- `GET /` health message
-- `GET /health` DB connectivity check
-- `POST /sessions` create chat session
-- `GET /sessions/current` get latest or create one
-- `POST /chat` stream LLM response (HTTP stream)
-- `POST /sessions/{session_id}/messages` create message
-- `GET /sessions/{session_id}/messages` list messages
-- `PATCH /messages/{message_id}` update message
-- `DELETE /messages/{message_id}` delete message
-- `POST /voice/tts` placeholder TTS endpoint
-- `GET /voice/config` voice config endpoint
-- `WS /ws/chat` realtime chat (token required)
+- `GET /api/v1/` health message
+- `GET /api/v1/health` DB connectivity check
+- `POST /api/v1/sessions` create chat session
+- `GET /api/v1/sessions/current` get latest or create one
+- `POST /api/v1/chat` stream LLM response (HTTP stream)
+- `POST /api/v1/sessions/{session_id}/messages` create message
+- `GET /api/v1/sessions/{session_id}/messages` list messages
+- `PATCH /api/v1/messages/{message_id}` update message
+- `DELETE /api/v1/messages/{message_id}` delete message
+- `POST /api/v1/voice/tts` placeholder TTS endpoint
+- `GET /api/v1/voice/config` voice config endpoint
+- `WS /api/v1/ws/chat` realtime chat (token required)
 
 ## Auth
 

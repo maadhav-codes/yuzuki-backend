@@ -16,11 +16,13 @@ configure_logging()
 app = FastAPI(title="Yuzuki API")
 app.add_middleware(RequestLoggingMiddleware)
 
-app.include_router(root_router)
-app.include_router(sessions_router)
-app.include_router(chat_router)
-app.include_router(messages_router)
-app.include_router(voice_router)
-app.include_router(websocket_router)
+API_V1_PREFIX = "/api/v1"
+
+app.include_router(root_router, prefix=API_V1_PREFIX)
+app.include_router(sessions_router, prefix=API_V1_PREFIX)
+app.include_router(chat_router, prefix=API_V1_PREFIX)
+app.include_router(messages_router, prefix=API_V1_PREFIX)
+app.include_router(voice_router, prefix=API_V1_PREFIX)
+app.include_router(websocket_router, prefix=API_V1_PREFIX)
 
 Base.metadata.create_all(bind=engine)
