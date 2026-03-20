@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     supabase_url: AnyHttpUrl = Field(alias="SUPABASE_URL")
     supabase_jwks_url: AnyHttpUrl = Field(alias="SUPABASE_JWKS_URL")
@@ -48,6 +50,12 @@ class Settings(BaseSettings):
         default=None, alias="SECRETS_LAST_ROTATED_AT"
     )
     database_url: str = Field(default="sqlite:///./yuzuki-ai.db", alias="DATABASE_URL")
+    sbv2_assets_root: str = Field(default="./model_assets", alias="SBV2_ASSETS_ROOT")
+    sbv2_model_name: str = Field(default="yuzuki_voice", alias="SBV2_MODEL_NAME")
+    sbv2_device: str | None = Field(default=None, alias="SBV2_DEVICE")
+    sbv2_speaker_id: int = Field(default=0, ge=0, alias="SBV2_SPEAKER_ID")
+    sbv2_default_language: str = Field(default="en", alias="SBV2_DEFAULT_LANGUAGE")
+    sbv2_enabled: bool = Field(default=True, alias="SBV2_ENABLED")
 
 
 @lru_cache(maxsize=1)

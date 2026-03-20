@@ -50,6 +50,12 @@ SUPABASE_JWKS_URL=...
 DATABASE_URL=sqlite:///./yuzuki-ai.db
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2:3b
+SBV2_ENABLED=true
+SBV2_ASSETS_ROOT=./model_assets
+SBV2_MODEL_NAME=yuzuki_voice
+SBV2_DEVICE=mps
+SBV2_SPEAKER_ID=0
+SBV2_DEFAULT_LANGUAGE=en
 MESSAGE_CONTEXT_LIMIT=10
 MESSAGE_RETENTION_LIMIT=200
 WS_RATE_LIMIT_WINDOW_SECONDS=60
@@ -90,7 +96,7 @@ Server starts at `http://127.0.0.1:8000`.
 - `GET /api/v1/sessions/{session_id}/messages` list messages
 - `PATCH /api/v1/messages/{message_id}` update message
 - `DELETE /api/v1/messages/{message_id}` delete message
-- `POST /api/v1/voice/tts` placeholder TTS endpoint
+- `POST /api/v1/voice/tts` SBV2 text-to-speech endpoint (`audio/wav`)
 - `GET /api/v1/voice/config` voice config endpoint
 - `WS /api/v1/ws/chat` realtime chat (token required)
 

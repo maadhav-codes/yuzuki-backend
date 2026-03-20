@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.routes.chat import router as chat_router
@@ -10,11 +12,22 @@ from app.core.logging import RequestLoggingMiddleware, configure_logging
 from app.core.security import SecurityHeadersAndRateLimitMiddleware
 from app.core.settings import get_settings
 from app.db.database import Base, engine
+from app.services.tts_service import tts_service
 
 _ = get_settings()
 configure_logging()
 
-app = FastAPI(title="Yuzuki API")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await tts_service.startup()
+    try:
+        yield
+    finally:
+        await tts_service.shutdown()
+
+
+app = FastAPI(title="Yuzuki API", lifespan=lifespan)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersAndRateLimitMiddleware)
 
