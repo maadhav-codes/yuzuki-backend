@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
@@ -13,9 +12,6 @@ import torch
 from app.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-JP_KANA_RE = re.compile(r"[\u3040-\u30ff]")
-CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 class TTSService:
@@ -59,7 +55,6 @@ class TTSService:
 
             # Preload BERT tokenizers/models once for predictable first-request latency.
             bert_models.load_model(Languages.EN)
-            bert_models.load_model(Languages.JP)
 
             model_dir = (
                 Path(self.settings.sbv2_assets_root) / self.settings.sbv2_model_name
@@ -99,38 +94,6 @@ class TTSService:
     async def shutdown(self) -> None:
         self.model = None
 
-    def _resolve_language(self, text: str, override: str | None) -> Any:
-        assert self.languages is not None
-
-        requested = (override or "").strip().lower()
-        if requested in {"en", "en-us", "english"}:
-            return self.languages.EN
-        if requested in {"ja", "jp", "ja-jp", "japanese"}:
-            return self.languages.JP
-        if requested in {"zh", "zh-cn", "chinese"} and hasattr(self.languages, "ZH"):
-            return self.languages.ZH
-
-        if (self.settings.sbv2_default_language or "en").strip().lower() in {
-            "ja",
-            "jp",
-            "ja-jp",
-        }:
-            fallback = self.languages.JP
-        else:
-            fallback = self.languages.EN
-
-        # English-first policy: switch only if Japanese/CJK characters are substantial.
-        jp_count = len(JP_KANA_RE.findall(text))
-        cjk_count = len(CJK_RE.findall(text))
-        text_len = max(len(text), 1)
-        has_significant_cjk = (
-            (jp_count >= 2)
-            or (cjk_count >= 3)
-            or ((jp_count + cjk_count) / text_len >= 0.2)
-        )
-
-        return self.languages.JP if has_significant_cjk else fallback
-
     @lru_cache(maxsize=50)
     def synthesize(
         self,
@@ -138,7 +101,6 @@ class TTSService:
         emotion: str = "talking",
         speed: float = 0.95,
         style_weight: float = 1.0,
-        language: str | None = None,
     ) -> bytes:
         if not self.enabled:
             raise RuntimeError("SBV2 disabled")
@@ -165,8 +127,6 @@ class TTSService:
         final_weight = min(1.85, max(0.1, style_weight * extra_weight))
         final_speed = min(1.6, max(0.6, speed))
 
-        resolved_language = self._resolve_language(clean_text, language)
-
         try:
             sample_rate, audio = self.model.infer(
                 text=clean_text,
@@ -174,7 +134,7 @@ class TTSService:
                 style=style_name,
                 style_weight=final_weight,
                 length=final_speed,
-                language=resolved_language,
+                language=self.languages.EN,
                 sdp_ratio=0.25,
                 noise=0.25,
                 noise_w=0.4,
@@ -189,7 +149,7 @@ class TTSService:
                 style=self.default_style,
                 style_weight=min(1.5, max(0.1, style_weight)),
                 length=final_speed,
-                language=resolved_language,
+                language=self.languages.EN,
                 sdp_ratio=0.25,
                 noise=0.25,
                 noise_w=0.4,

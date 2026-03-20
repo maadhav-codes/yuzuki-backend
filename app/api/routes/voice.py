@@ -20,7 +20,6 @@ async def text_to_speech(
             emotion=tts.emotion,
             speed=tts.speed,
             style_weight=tts.styleWeight,
-            language=tts.language,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -38,6 +37,4 @@ async def text_to_speech(
 async def voice_config(
     current_user: User = Depends(get_current_user),
 ):
-    return VoiceConfigResponse(
-        supportedLanguages=["en", "ja", "zh"], defaultVoice="sbv2"
-    )
+    return VoiceConfigResponse(supportedLanguages=["en"], defaultVoice="sbv2")

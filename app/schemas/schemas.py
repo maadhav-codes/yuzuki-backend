@@ -69,7 +69,6 @@ class VoiceTTSRequest(BaseModel):
     emotion: str = Field(default="talking", max_length=60)
     speed: float = Field(default=0.95, ge=0.6, le=1.6)
     styleWeight: float = Field(default=1.0, ge=0.1, le=2.0)
-    language: Optional[str] = Field(default=None, max_length=20)
     voiceId: Optional[str] = Field(default=None, max_length=120)
 
     @field_validator("text")
@@ -93,14 +92,6 @@ class VoiceTTSRequest(BaseModel):
     def validate_emotion(cls, value: str) -> str:
         cleaned = sanitize_text_input(value)
         return cleaned or "talking"
-
-    @field_validator("language")
-    @classmethod
-    def validate_language(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        cleaned = sanitize_text_input(value)
-        return cleaned or None
 
 
 class VoiceConfigResponse(BaseModel):
