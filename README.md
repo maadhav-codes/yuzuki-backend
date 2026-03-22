@@ -8,7 +8,6 @@ FastAPI backend for chat sessions, message history, and realtime websocket chat 
 .
 ├── app/
 │   ├── api/
-│   │   ├── common.py
 │   │   └── routes/
 │   │       ├── chat.py
 │   │       ├── messages.py
@@ -18,7 +17,10 @@ FastAPI backend for chat sessions, message history, and realtime websocket chat 
 │   │       └── websocket.py
 │   ├── core/
 │   │   ├── auth.py
-│   │   └── dependencies.py
+│   │   ├── dependencies.py
+│   │   ├── logging.py
+│   │   ├── security.py
+│   │   └── settings.py
 │   ├── crud/
 │   │   └── message.py
 │   ├── db/
@@ -28,15 +30,20 @@ FastAPI backend for chat sessions, message history, and realtime websocket chat 
 │   ├── schemas/
 │   │   └── schemas.py
 │   └── services/
-│       └── ollama_service.py
+│       ├── ollama_service.py
+│       └── tts_service.py
 ├── main.py
-├── requirements.txt
+├── pyproject.toml
+├── test_ollama.py
+├── test_ws_workflow.py
+├── uv.lock
 └── yuzuki-ai.db
 ```
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.14+
+- `uv` for package management and virtual environments
 - Ollama running locally (default `http://localhost:11434`)
 - Supabase JWT configuration for auth
 
@@ -71,16 +78,16 @@ If either is missing or invalid, the app fails fast with a clear validation erro
 
 ## Installation
 
+This project uses `uv` for package management.
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 ## Run
 
 ```bash
-uvicorn main:app --reload
+uv run uvicorn main:app --reload
 ```
 
 Server starts at `http://127.0.0.1:8000`.
